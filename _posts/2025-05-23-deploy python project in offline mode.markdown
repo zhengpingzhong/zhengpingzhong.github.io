@@ -25,7 +25,7 @@ categories: jekyll update
 
 ## get the platform info
 
-`python3 -m pip debug --verbose|grep linux|less`
+`python3 -m pip debug --verbose|less`
 
 ```text
 
@@ -76,4 +76,12 @@ Compatible tags: 1002
 **NOTICE:**
 
 - Using "--platform=manylinux2014_x86_64" makes the package compatible with most Linux distributions.
+
+## upload wheels to Linux
+
+  Using FTP, you can conveniently use FTP to upload the wheels to the target Linux server.
   
+## install package from local directory
+
+`pip3 install --no-index --find-links file:///home/bcadmin/wheel/ -r requirement.txt`
+
