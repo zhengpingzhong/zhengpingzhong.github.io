@@ -1,6 +1,6 @@
 ---
 layout: post
-title:  "some tips of logrotate"
+title:  "Using pwsh set ServerAddressesg"
 date:   2025-06-11 22:00:00 +0800
 categories: jekyll update
 ---
@@ -51,14 +51,14 @@ DNSServer            : 26.26.26.53
 
 ```bash
 
-route -p add 172.17.249.150 mask 255.255.255.255 172.17.249.150 if 13
+route -p add 172.17.249.195 mask 255.255.255.255 192.163.168.18 if 13
 
 ```
 
 ## add dnsserver
 
 ```bash
-Set-DnsClientServerAddress -InterfaceAlias "SecTap Adapter" -ServerAddresses ("10.54.12.130")
+Set-DnsClientServerAddress -InterfaceAlias "以太网" -ServerAddresses ("10.54.12.130")
 Set-DnsClientServerAddress -InterfaceIndex 14 -ServerAddresses ("10.54.12.130")
 
 PS C:\Users\Administrator> get-netipconfiguration
