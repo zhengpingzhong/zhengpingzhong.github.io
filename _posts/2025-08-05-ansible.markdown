@@ -1,0 +1,68 @@
+---
+layout: post
+title:  "ansible tutorials "
+date:   2025-08-05 22:00:00 +0800
+categories: ansible
+---
+
+## 1. Create ansible user with key
+
+``` bash
+
+#!/bin/bash
+
+set -e
+
+USERNAME="ansible"
+USER_HOME="/home/$USERNAME"
+SSH_DIR="$USER_HOME/.ssh"
+KEY_FILE="$SSH_DIR/id_rsa"
+
+# 1. 创建 ansible 用户（如果不存在）
+chown -R  $USERNAME:$USERNAME $USER_HOME
+
+if ! id "$USERNAME" &>/dev/null; then
+  echo "Creating user $USERNAME..."
+  useradd -m -s /bin/bash "$USERNAME"
+  usermod -aG root "$USERNAME" 
+else
+  echo "User $USERNAME already exists."
+fi
+
+# 2. 创建 .ssh 目录
+mkdir -p "$SSH_DIR"
+chown -R "$USERNAME:$USERNAME" "$SSH_DIR"
+chmod 700 "$SSH_DIR"
+
+# 3. 生成 SSH 密钥对（如果不存在）
+if [ ! -f "$KEY_FILE" ]; then
+  echo "Generating SSH key pair..."
+  sudo -u "$USERNAME" ssh-keygen -t rsa -b 4096 -f "$KEY_FILE" -N ""
+else
+  echo "SSH key already exists."
+fi
+
+# 4. 设置 authorized_keys
+cat "$KEY_FILE.pub" > "$SSH_DIR/authorized_keys"
+chown "$USERNAME:$USERNAME" "$SSH_DIR/authorized_keys"
+chmod 600 "$SSH_DIR/authorized_keys"
+
+# 5. 添加 sudo 权限（免密码）
+if [ -f "/etc/sudoers.d/$USERNAME" ]; then
+  echo "Sudoers entry already exists."
+else
+  echo "$USERNAME ALL=(ALL) NOPASSWD: ALL" > "/etc/sudoers.d/$USERNAME"
+  chmod 440 "/etc/sudoers.d/$USERNAME"
+  echo "Sudo permission granted to $USERNAME."
+fi
+
+echo
+echo "Setup complete!"
+echo "Public key for $USERNAME:"
+echo "----------------------------------------"
+cat "$KEY_FILE.pub"
+echo "----------------------------------------"
+echo "Copy this public key to your target machine's ~/.ssh/authorized_keys"
+
+
+```
