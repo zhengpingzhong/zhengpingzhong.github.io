@@ -9,60 +9,136 @@ categories: ansible
 
 ``` bash
 
-#!/bin/bash
-
-set -e
-
-USERNAME="ansible"
-USER_HOME="/home/$USERNAME"
-SSH_DIR="$USER_HOME/.ssh"
-KEY_FILE="$SSH_DIR/id_rsa"
-
 # 1. 创建 ansible 用户（如果不存在）
-chown -R  $USERNAME:$USERNAME $USER_HOME
+useradd -m -d /home/ansible -s /bin/bash ansible
 
-if ! id "$USERNAME" &>/dev/null; then
-  echo "Creating user $USERNAME..."
-  useradd -m -s /bin/bash "$USERNAME"
-  usermod -aG root "$USERNAME" 
-else
-  echo "User $USERNAME already exists."
-fi
 
 # 2. 创建 .ssh 目录
-mkdir -p "$SSH_DIR"
-chown -R "$USERNAME:$USERNAME" "$SSH_DIR"
-chmod 700 "$SSH_DIR"
+mkdir -p /home/ansible/.ssh
+chown -R ansible:ansible /home/ansible/.ssh
+chmod 700 /home/ansible/.ssh
 
-# 3. 生成 SSH 密钥对（如果不存在）
-if [ ! -f "$KEY_FILE" ]; then
-  echo "Generating SSH key pair..."
-  sudo -u "$USERNAME" ssh-keygen -t rsa -b 4096 -f "$KEY_FILE" -N ""
-else
-  echo "SSH key already exists."
-fi
+# 3. 生成 SSH 密钥对（提示输入信息的时候直接回车）
+ssh-keygen -t ed25519 -C "ansible-control"
 
-# 4. 设置 authorized_keys
-cat "$KEY_FILE.pub" > "$SSH_DIR/authorized_keys"
-chown "$USERNAME:$USERNAME" "$SSH_DIR/authorized_keys"
-chmod 600 "$SSH_DIR/authorized_keys"
+# 4. 设置 authorized_keys，在.ssh 目录中创建authorized_keys文件，将46机器的id_ed25519.pub内容复制到改文件，主要不要多复制任何字符，包括空格和换行
+
+chmod 600 /home/ansible/.ssh/authorized_keys
 
 # 5. 添加 sudo 权限（免密码）
-if [ -f "/etc/sudoers.d/$USERNAME" ]; then
-  echo "Sudoers entry already exists."
-else
-  echo "$USERNAME ALL=(ALL) NOPASSWD: ALL" > "/etc/sudoers.d/$USERNAME"
-  chmod 440 "/etc/sudoers.d/$USERNAME"
-  echo "Sudo permission granted to $USERNAME."
-fi
-
-echo
-echo "Setup complete!"
-echo "Public key for $USERNAME:"
-echo "----------------------------------------"
-cat "$KEY_FILE.pub"
-echo "----------------------------------------"
-echo "Copy this public key to your target machine's ~/.ssh/authorized_keys"
-
+echo "ansible ALL=(ALL) NOPASSWD: ALL" > "/etc/sudoers.d/ansible"
+chmod 440 /etc/sudoers.d/ansible
 
 ```
+
+## Copy anthorized_keys to target host
+
+要让Ansible控制机免密登录目标机器，本质上是在控制机和目标机之间配置SSH公钥认证，步骤如下：
+
+### **前提条件**
+
+- 控制机已安装Ansible（无需在目标机安装）
+- 控制机和目标机网络互通（能ping通）
+- 知道目标机的登录用户名（如`ansible`）和密码（用于初始配置）
+
+### **步骤1：在Ansible控制机生成SSH密钥对**
+
+如果控制机没有SSH密钥对，先在控制机终端执行以下命令生成（已有的话可跳过）：
+
+```bash
+# 推荐使用更安全的ED25519算法
+ssh-keygen -t ed25519 -C "ansible-control"
+
+```
+
+- 提示输入密钥保存路径时，直接按回车（默认存为`~/.ssh/id_ed25519`）
+- 提示输入密码（passphrase）时，直接按回车（为空则完全免密）
+
+生成后，控制机的`~/.ssh/`目录会出现：
+- 私钥：`id_ed25519`（控制机自用，不可泄露）
+- 公钥：`id_ed25519.pub`（需要传到目标机）
+
+
+### **步骤2：将控制机公钥复制到目标机**
+
+#### 方法1：用`ssh-copy-id`自动配置（推荐）
+
+在控制机终端执行，将公钥发送到目标机：
+
+```bash
+# 替换为目标机的用户名和IP
+ssh-copy-id 目标机用户名@目标机IP
+```
+
+示例：
+
+```bash
+ssh-copy-id ansible@172.18.1.67
+```
+
+- 首次执行会提示确认目标机指纹，输入`yes`
+- 然后输入目标机用户的密码（仅这一次需要密码）
+
+执行成功后，控制机的公钥会自动添加到目标机的`~/.ssh/authorized_keys`文件中。
+
+
+#### 方法2：手动复制公钥（当`ssh-copy-id`不可用时）
+
+1. 在控制机查看公钥内容并复制：
+   ```bash
+   cat ~/.ssh/id_ed25519.pub
+   ```
+   复制输出的**完整一行内容**（以`ssh-ed25519`开头）。
+
+2. 登录目标机（需输入密码）：
+   ```bash
+   ssh ansible@172.18.1.67
+   ```
+
+3. 在目标机创建`.ssh`目录和授权文件（若不存在）：
+   ```bash
+   mkdir -p ~/.ssh
+   touch ~/.ssh/authorized_keys
+   ```
+
+4. 编辑授权文件，粘贴控制机的公钥：
+   ```bash
+   vi ~/.ssh/authorized_keys  # 按i进入编辑模式，粘贴公钥，按ESC后输入:wq保存
+   ```
+
+5. 修复目标机权限（关键！）：
+   ```bash
+   chmod 700 ~/.ssh
+   chmod 600 ~/.ssh/authorized_keys
+   ```
+
+
+### **步骤3：验证免密登录**
+在控制机测试是否能免密登录目标机：
+```bash
+ssh ansible@172.18.1.67
+```
+如果无需输入密码直接登录，说明配置成功。
+
+
+### **步骤4：配置Ansible Inventory（可选）**
+为了让Ansible使用免密登录，需在Inventory文件（如`hosts`）中指定目标机信息：
+```ini
+# 编辑Inventory文件（例如/etc/ansible/hosts或自定义文件）
+[targets]
+172.18.1.67 ansible_user=ansible  # ansible_user为目标机登录用户名
+```
+
+测试Ansible连接：
+```bash
+ansible 172.18.1.67 -m ping -i hosts  # -i指定Inventory文件路径
+```
+返回`"pong"`表示Ansible已能免密管理目标机。
+
+
+### **常见问题解决**
+1. 仍提示输入密码：检查目标机`.ssh`目录和`authorized_keys`文件权限是否为`700`和`600`。
+2. 公钥认证被拒绝：确认控制机公钥与目标机`authorized_keys`中的内容完全一致（无换行、空格）。
+3. SSH端口非默认（如2222）：在Inventory中指定端口：`172.18.1.67 ansible_user=ansible ansible_port=2222`。
+
+通过以上步骤，Ansible控制机即可实现对目标机器的免密登录和管理。
