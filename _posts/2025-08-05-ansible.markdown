@@ -25,8 +25,9 @@ chmod 440 /etc/sudoers.d/ansible
 mkdir -p /home/ansible/.ssh
 chown -R ansible:ansible /home/ansible/.ssh
 chmod 700 /home/ansible/.ssh
-touch authorized_keys
+touch /home/ansible/.ssh/authorized_keys
 chmod 600 /home/ansible/.ssh/authorized_keys
+chown -R ansible:ansible /home/ansible
 
 ```
 
@@ -35,7 +36,7 @@ chmod 600 /home/ansible/.ssh/authorized_keys
 Use ansible-playbook command.
 
 ```bash
-ansible-playbook -i inventory.ini change_bcadmin_password.yml --ask-vault-pass
+ansible-playbook change_bcadmin_password.yml
 ```
 
 ### 1. Change password palybook
